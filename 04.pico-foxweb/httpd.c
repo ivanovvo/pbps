@@ -11,6 +11,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <time.h>
+#include <syslog.h>
+
 #define MAX_CONNECTIONS 1000
 #define BUF_SIZE 65535
 #define QUEUE_SIZE 1000000
@@ -27,18 +30,33 @@ char *method, // "GET" or "POST"
     *uri,     // "/index.html" things before '?'
     *qs,      // "a=1&b=2" things after  '?'
     *prot,    // "HTTP/1.1"
-    *payload; // for POST
+    *payload, // for POST
+    *message_log,
+    *responseSize; 
 
 int payload_size;
+struct sockaddr_in clientaddr; //////////////////////////
+//FILE *file;
+
 
 void serve_forever(const char *PORT) {
-  struct sockaddr_in clientaddr;
+  //file = fopen("/prog/pbps/04.pico-foxweb/log.txt", "w");
   socklen_t addrlen;
 
   int slot = 0;
-
-  printf("Server started %shttp://127.0.0.1:%s%s\n", "\033[92m", PORT,
-         "\033[0m");
+  
+  /*printf("fsdgsdgfsdgsggreyhgeryhgersyhgwes5rghbwres5ghwesr5gherhbertherhet");
+  
+  fprintf(file, "%s\n", 
+                "hell"); 
+  
+  fclose(file);*/
+  
+  message_log = malloc(1000);
+  
+  sprintf(message_log, "Server started %shttp://127.0.0.1:%s%s\n", "\033[92m", PORT, 
+          "\033[0m");
+  syslog(LOG_INFO, "%s", message_log);
 
   // create shared memory for client slot array
   clients = mmap(NULL, sizeof(*clients) * MAX_CONNECTIONS,
@@ -178,8 +196,16 @@ void respond(int slot) {
 
     uri_unescape(uri);
 
-    fprintf(stderr, "\x1b[32m + [%s] %s\x1b[0m\n", method, uri);
+    time_t rawtime;
+    struct tm * timeinfo;
+    char dateTime [80];
+    time (&rawtime);
+    timeinfo = localtime (&rawtime);
+    strftime(dateTime, 30, "%d/%b/%Y:%H:%M:%S %z", timeinfo);
 
+    char *clientIp = inet_ntoa(clientaddr.sin_addr);
+    sprintf(message_log, "%s :: [%s] \"%s %s %s\"", clientIp, dateTime, method, uri, prot);
+ 
     qs = strchr(uri, '?');
 
     if (qs)
@@ -203,7 +229,7 @@ void respond(int slot) {
       h->name = key;
       h->value = val;
       h++;
-      fprintf(stderr, "[H] %s: %s\n", key, val);
+
       t = val + 1 + strlen(val);
       if (t[1] == '\r' && t[2] == '\n')
         break;
@@ -221,11 +247,15 @@ void respond(int slot) {
     // call router
     route();
 
-    // tidy up
+
+    syslog(LOG_INFO, "%s", message_log);
+    
     fflush(stdout);
+    // tidy up
     shutdown(STDOUT_FILENO, SHUT_WR);
     close(STDOUT_FILENO);
   }
 
   free(buf);
+  
 }
